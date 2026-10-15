@@ -109,6 +109,7 @@ from litellm.proxy._types import (
     LiteLLM_EndUserTable,
     Litellm_EntityType,
     LiteLLM_JWTAuth,
+    OIDCTokenExchangeConfig,
     LiteLLM_TagTable,
     LiteLLM_TeamTable,
     LiteLLM_TeamTableCachedObj,
@@ -1550,6 +1551,9 @@ async def proxy_startup_event(app: FastAPI) -> AsyncGenerator[ProxyLifespanState
         user_api_key_cache=user_api_key_cache,
     )
 
+    ## OPEN-SOURCE OIDC TOKEN EXCHANGE AUTH ##
+    ProxyStartupEvent._initialize_oidc_token_exchange(general_settings=general_settings)
+
     ProxyStartupEvent._attach_router_to_prompt_injection_detectors(llm_router=llm_router)
 
     verbose_proxy_logger.debug("prisma_client: %s", prisma_client)
@@ -2725,6 +2729,9 @@ proxy_config_reload_interval_seconds = PROXY_CONFIG_RELOAD_INTERVAL_SECONDS
 litellm_master_key_hash = None
 disable_spend_logs = False
 jwt_handler: Final = JWTHandler()
+from litellm.proxy.auth.oidc_token_exchange import OIDCTokenExchangeAuthenticator
+
+oidc_token_exchange_authenticator: Final = OIDCTokenExchangeAuthenticator.get_instance()
 prompt_injection_detection_obj: _OPTIONAL_PromptInjectionDetection | None = None
 store_model_in_db: bool = False
 open_telemetry_logger: OpenTelemetry | None = None
@@ -10508,6 +10515,25 @@ class ProxyStartupEvent:
         from litellm.proxy.agent_endpoints.agent_registry import global_agent_registry
 
         jwt_handler.bind_agent_lookup(global_agent_registry)
+
+    @classmethod
+    def _initialize_oidc_token_exchange(cls, general_settings: dict) -> None:
+        """Initialize open-source OIDC bearer-token auth. Absent config leaves it disabled"""
+        declared: Final = general_settings.get("oidc_token_exchange")
+        if declared is None:
+            return
+        if not isinstance(declared, dict):
+            raise ValueError(
+                f"general_settings.oidc_token_exchange must be a mapping, got {type(declared).__name__}"
+            )
+        resolved: Final = {
+            key: (get_secret(value) if isinstance(value, str) and value.startswith("os.environ/") else value)
+            for key, value in declared.items()
+        }
+        # model_validate, not OIDCTokenExchangeConfig(**resolved): it rejects
+        # unknown keys outright, so a typo like `issuers:` fails startup
+        # instead of being silently ignored.
+        oidc_token_exchange_authenticator.update_config(OIDCTokenExchangeConfig.model_validate(resolved))
 
     @classmethod
     def _add_proxy_budget_to_db(cls):

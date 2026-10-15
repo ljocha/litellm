@@ -4470,6 +4470,11 @@ class ProxyErrorTypes(str, enum.Enum):
     General authentication error
     """
 
+    oidc_token_exchange_auth_error = "oidc_token_exchange_auth_error"
+    """
+    Open-source OIDC bearer-token authentication rejected the request
+    """
+
     auth_provider_unavailable = "auth_provider_unavailable"
     """
     The identity provider needed to authenticate the request (e.g. its JWKS endpoint) is unreachable
@@ -5326,6 +5331,45 @@ class JWTIssuerConfig(LiteLLMBaseModel):
 
 
 DEFAULT_JWKS_STALE_TTL: Final = 3600
+
+
+class OIDCTokenExchangeConfig(LiteLLMPydanticObjectBase):
+    """Open-source, license-independent OIDC bearer-token auth (`general_settings.oidc_token_exchange`).
+
+    Accepts RFC 8693 token-exchange tokens: `sub` is the delegated human, `act.sub` the calling
+    service (kept in the attached claims only), `aud` must be this proxy's client id.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    issuer: str = Field(description="Exact expected `iss` claim of accepted tokens.")
+    audience: str | list[str] = Field(description="This proxy's client id(s); token accepted when `aud` intersects.")
+    jwks_url: str | None = Field(
+        default=None,
+        description="Explicit JWKS endpoint. When absent, resolved via OIDC discovery from the issuer.",
+    )
+    upsert_user: bool = Field(
+        default=True,
+        description="Find-or-create one proxy user record per `sub`. When false, an unknown `sub` is a 403.",
+    )
+    auto_register_virtual_key: bool = Field(
+        default=False,
+        description="Mint a virtual key owned by the provisioned user on first authentication.",
+    )
+    jwks_cache_ttl: float = Field(
+        default=600,
+        ge=0,
+        description="Seconds a fetched JWKS is reused before re-fetching from the issuer.",
+    )
+
+    @model_validator(mode="after")
+    def validate_non_empty(self) -> "OIDCTokenExchangeConfig":
+        if not self.issuer.strip():
+            raise ValueError("issuer must be a non-empty string")
+        audiences: Final = self.audience if isinstance(self.audience, list) else [self.audience]
+        if not audiences or any(not (isinstance(a, str) and a.strip()) for a in audiences):
+            raise ValueError("audience must be a non-empty string or list of non-empty strings")
+        return self
 
 
 class LiteLLM_JWTAuth(LiteLLMPydanticObjectBase):

@@ -2187,6 +2187,32 @@ async def _user_api_key_auth_builder(
             if isinstance(api_key, str):  # if generated token, make sure it starts with sk-.
                 _masked_key: Final = f"{api_key[:4]}****{api_key[-4:]}" if len(api_key) > 8 else "****"
                 if not api_key.startswith("sk-"):
+                    # Open-source OIDC token exchange: a JWT-shaped bearer from
+                    # the configured issuer authenticates here. Runs only after
+                    # the master-key compare and the (license-gated) enterprise
+                    # JWT block, so keys and master key are unaffected.
+                    from litellm.proxy.auth.oidc_token_exchange import (
+                        OIDCTokenExchangeAuthenticator,
+                        _OIDCTokenRejected,
+                        _OIDCUserUnknown,
+                        raise_oidc_token_exchange_error,
+                    )
+
+                    _oidc_authenticator: Final = (
+                        OIDCTokenExchangeAuthenticator.get_instance()
+                        if not enable_jwt_auth and JWTHandler.is_jwt(token=api_key)
+                        else None
+                    )
+                    if _oidc_authenticator is not None and _oidc_authenticator.is_enabled():
+                        try:
+                            return await _oidc_authenticator.authenticate(
+                                token=api_key,
+                                prisma_client=prisma_client,
+                                user_api_key_cache=user_api_key_cache,
+                                parent_otel_span=parent_otel_span,
+                            )
+                        except (_OIDCTokenRejected, _OIDCUserUnknown) as error:
+                            raise_oidc_token_exchange_error(error)
                     _hint = _JWT_AUTH_DISABLED_HINT if not enable_jwt_auth and JWTHandler.is_jwt(token=api_key) else ""
                     _malformed_key_error = HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
