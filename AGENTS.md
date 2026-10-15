@@ -130,3 +130,17 @@ Before implementing:
 Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify
 
 Before requesting maintainer review, verify the current PR tip passes required CI and code coverage, meets Greptile confidence of at least 4/5, and has acceptable Veria and Bugbot reviews. Inspect warnings and findings, fix actionable issues, and rerun the affected checks and reviewers after changes. Record evidence for any false positive or unavailable review; never treat a pending or missing bot result as a pass. Do not lower coverage thresholds or lint budgets to satisfy a check
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked as GitHub issues on this repo and managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical labels are `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout: one `CONTEXT.md` plus `docs/adr/` at the repo root. See `docs/agents/domain.md`.
