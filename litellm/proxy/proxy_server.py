@@ -10533,7 +10533,14 @@ class ProxyStartupEvent:
         # model_validate, not OIDCTokenExchangeConfig(**resolved): it rejects
         # unknown keys outright, so a typo like `issuers:` fails startup
         # instead of being silently ignored.
-        oidc_token_exchange_authenticator.update_config(OIDCTokenExchangeConfig.model_validate(resolved))
+        parsed_config: Final = OIDCTokenExchangeConfig.model_validate(resolved)
+        if parsed_config.disable_audience_validation:
+            verbose_proxy_logger.warning(
+                "OIDC token exchange: audience validation is disabled; any token from issuer %s is accepted. "
+                "This is intended for test environments only.",
+                parsed_config.issuer,
+            )
+        oidc_token_exchange_authenticator.update_config(parsed_config)
 
     @classmethod
     def _add_proxy_budget_to_db(cls):

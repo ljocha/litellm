@@ -5343,7 +5343,20 @@ class OIDCTokenExchangeConfig(LiteLLMPydanticObjectBase):
     model_config = ConfigDict(extra="forbid")
 
     issuer: str = Field(description="Exact expected `iss` claim of accepted tokens.")
-    audience: str | list[str] = Field(description="This proxy's client id(s); token accepted when `aud` intersects.")
+    audience: str | list[str] | None = Field(
+        default=None,
+        description=(
+            "This proxy's client id(s); token accepted when `aud` intersects. "
+            "Required unless disable_audience_validation=True, and mutually exclusive with it."
+        ),
+    )
+    disable_audience_validation: bool = Field(
+        default=False,
+        description=(
+            "Skip the `aud` check so any token from the issuer authenticates. "
+            "Intended for test environments that cannot produce true exchanged tokens."
+        ),
+    )
     jwks_url: str | None = Field(
         default=None,
         description="Explicit JWKS endpoint. When absent, resolved via OIDC discovery from the issuer.",
@@ -5366,9 +5379,14 @@ class OIDCTokenExchangeConfig(LiteLLMPydanticObjectBase):
     def validate_non_empty(self) -> "OIDCTokenExchangeConfig":
         if not self.issuer.strip():
             raise ValueError("issuer must be a non-empty string")
-        audiences: Final = self.audience if isinstance(self.audience, list) else [self.audience]
-        if not audiences or any(not (isinstance(a, str) and a.strip()) for a in audiences):
-            raise ValueError("audience must be a non-empty string or list of non-empty strings")
+        if self.audience is None and not self.disable_audience_validation:
+            raise ValueError("audience must be configured or disable_audience_validation must be true")
+        if self.audience is not None and self.disable_audience_validation:
+            raise ValueError("audience and disable_audience_validation=true cannot be set together")
+        if self.audience is not None:
+            audiences: Final = self.audience if isinstance(self.audience, list) else [self.audience]
+            if not audiences or any(not (isinstance(a, str) and a.strip()) for a in audiences):
+                raise ValueError("audience must be a non-empty string or list of non-empty strings")
         return self
 
 

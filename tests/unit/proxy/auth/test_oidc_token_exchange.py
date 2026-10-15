@@ -190,10 +190,11 @@ def test_config_model_defaults():
     [
         {"audience": AUDIENCE},  # missing issuer
         {"issuer": "  ", "audience": AUDIENCE},  # blank issuer
-        {"issuer": ISSUER},  # missing audience
+        {"issuer": ISSUER},  # missing audience with validation enabled
         {"issuer": ISSUER, "audience": []},  # empty audience list
         {"issuer": ISSUER, "audience": ["  "]},  # blank audience entry
         {"issuer": ISSUER, "audience": "x", "jwks_cache_ttl": -1},  # negative ttl
+        {"issuer": ISSUER, "audience": AUDIENCE, "disable_audience_validation": True},  # both set
     ],
 )
 def test_config_model_rejects_malformed(payload: dict):
@@ -287,6 +288,56 @@ async def test_list_audience_overlap_accepts():
 
     result, _, _ = await _authenticate(authenticator, token, users=[user])
     assert result.user_id == "human-1"
+
+
+# ---- disable_audience_validation ----
+
+
+def test_config_model_accepts_audience_omitted_when_validation_disabled():
+    config: Final = OIDCTokenExchangeConfig(issuer=ISSUER, disable_audience_validation=True)
+    assert config.disable_audience_validation is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("audience", ["arbitrary-svc", "someone-else", ""])
+async def test_validation_disabled_accepts_any_audience(audience: str):
+    private_key, jwk = _get_rsa_key_and_jwk(kid="test-key")
+    token: Final = _encode_jwt(private_key, audience=audience)
+    config: Final = OIDCTokenExchangeConfig(issuer=ISSUER, disable_audience_validation=True)
+    authenticator, _ = _make_authenticator(keys=[jwk], config=config)
+    user: Final = _make_user("human-1")
+
+    result, _, _ = await _authenticate(authenticator, token, users=[user])
+    assert result.user_id == "human-1"
+
+
+@pytest.mark.asyncio
+async def test_validation_disabled_still_enforces_signature_and_expiry():
+    attacker_key, trusted_jwk = _get_rsa_key_and_jwk(kid="test-key")
+    config: Final = OIDCTokenExchangeConfig(issuer=ISSUER, disable_audience_validation=True)
+    # JWKS publishes trusted_jwk; the forged token is signed by a different key
+    authenticator, _ = _make_authenticator(keys=[trusted_jwk], config=config)
+
+    other_key, _ = _get_rsa_key_and_jwk(kid="test-key")
+    forged: Final = _encode_jwt(other_key, audience="anything")
+    with pytest.raises(_OIDCTokenRejected):
+        await _authenticate(authenticator, forged)
+
+    expired_key, expired_jwk = _get_rsa_key_and_jwk(kid="expired-key")
+    expired_authenticator, _ = _make_authenticator(keys=[expired_jwk], config=config)
+    expired: Final = _encode_jwt(expired_key, audience="anything", exp=int(time.time()) - 10)
+    with pytest.raises(_OIDCTokenRejected):
+        await _authenticate(expired_authenticator, expired)
+
+
+@pytest.mark.asyncio
+async def test_wrong_audience_still_rejects_with_validation_enabled():
+    private_key, jwk = _get_rsa_key_and_jwk(kid="test-key")
+    token: Final = _encode_jwt(private_key, audience="someone-else")
+    authenticator, _ = _make_authenticator(keys=[jwk])
+
+    with pytest.raises(_OIDCTokenRejected):
+        await _authenticate(authenticator, token)
 
 
 @pytest.mark.asyncio

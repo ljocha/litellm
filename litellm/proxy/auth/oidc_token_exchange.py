@@ -210,6 +210,7 @@ class OIDCTokenExchangeAuthenticator:
                 algorithms=[algorithm],
                 issuer=config.issuer,
                 audience=config.audience,
+                options={"verify_aud": not config.disable_audience_validation},
             )
         except jwt_lib.InvalidIssuerError as e:
             raise _OIDCTokenRejected("Token issuer does not match the configured OIDC issuer") from e

@@ -25,12 +25,14 @@ general_settings:
 ```
 
 Malformed config fails fast at startup with the offending field named; a
-proxy without the key boots unchanged.
+proxy without the key boots unchanged. Setting `disable_audience_validation`
+together with an explicit `audience` is rejected, as is omitting both.
 
 | field | type | default | meaning |
 | --- | --- | --- | --- |
 | `issuer` | str | required | Exact expected `iss` claim of accepted tokens |
-| `audience` | str or list[str] | required | This proxy's client id(s); token accepted when `aud` intersects |
+| `audience` | str or list[str] | required | This proxy's client id(s); token accepted when `aud` intersects; omit only when `disable_audience_validation` is true |
+| `disable_audience_validation` | bool | `false` | Skip the `aud` check so any token from the issuer authenticates. Test environments only, never production |
 | `jwks_url` | str | none | Explicit JWKS endpoint; when absent, resolved via OIDC discovery from the issuer |
 | `upsert_user` | bool | `true` | Find-or-create one proxy user record per `sub`; `false` rejects unknown identities with 403 |
 | `auto_register_virtual_key` | bool | `false` | Mint a virtual key owned by the provisioned user on first authentication, so the human can call the proxy directly |
